@@ -1,0 +1,361 @@
+openapi: 3.0.0
+info:
+  title: Brokage Firm Backend API
+  description: Backend service for managing customer stock orders, deposits, withdrawals, assets, and customer information.
+  version: 1.0.0
+tags:
+  - name: employee
+    description: All operations related to the brokage services which can be done by employees
+  - name: admin
+    description: Administrative operations for the brokage services by system admins
+
+servers:
+  - url: http://localhost:8080
+    description: Local Development Server
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+
+  schemas:
+    Customer:
+      type: object
+      properties:
+        customerId:
+          type: string
+          description: Unique customer identifier
+        name:
+          type: string
+          description: Customer's full name
+        balance:
+          type: number
+          format: double
+          description: Customer's TRY balance
+
+    DepositWithdraw:
+      type: object
+      properties:
+        customerId:
+          type: string
+          description: Unique customer identifier
+        amount:
+          type: number
+          format: double
+          description: Amount of TRY to deposit or withdraw
+        iban:
+          type: string
+          description: IBAN to withdraw to (required for withdrawals)
+
+    StockOrder:
+      type: object
+      properties:
+        orderId:
+          type: string
+          description: Unique order identifier
+        customerId:
+          type: string
+          description: Unique customer identifier
+        assetName:
+          type: string
+          description: The asset involved in the order
+        orderSide:
+          type: string
+          enum: [BUY, SELL]
+          description: The side of the order (BUY or SELL)
+        size:
+          type: integer
+          description: The number of assets in the order
+        price:
+          type: number
+          format: double
+          description: Price of the asset
+        orderDate:
+          type: string
+          format: date-time
+          description: The date when the order was placed
+
+  parameters:
+    customerId:
+      name: customerId
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Unique customer identifier to filter orders
+
+    assetName:
+      name: assetName
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Asset name to filter orders
+
+    orderSide:
+      name: orderSide
+      in: query
+      required: false
+      schema:
+        type: string
+        enum: [BUY, SELL]
+      description: Order side (BUY or SELL) to filter orders
+
+    startDate:
+      name: startDate
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: The start date for filtering orders
+
+    endDate:
+      name: endDate
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date-time
+      description: The end date for filtering orders
+
+security:
+  - basicAuth: []
+
+paths:
+  /customers:
+    post:
+      tags:
+        - employee
+      summary: Create a new customer
+      description: Register a new customer with an initial balance.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Customer's full name
+                balance:
+                  type: number
+                  format: double
+                  description: Initial TRY balance for the customer
+      responses:
+        '201':
+          description: Customer created successfully
+        '400':
+          description: Invalid request or customer already exists
+
+  /customers/{customerId}:
+    delete:
+      tags:
+        - employee
+      summary: Remove an existing customer
+      description: Delete a customer from the system. All associated data will be removed.
+      security:
+        - basicAuth: []
+      parameters:
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the customer to be removed
+      responses:
+        '200':
+          description: Customer removed successfully
+        '400':
+          description: Invalid request or customer cannot be deleted
+        '404':
+          description: Customer not found
+
+  /deposit:
+    post:
+      tags:
+        - employee
+      summary: Deposit TRY for a customer
+      description: Deposit a specified amount of TRY for the customer.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositWithdraw'
+      responses:
+        '200':
+          description: Deposit successful
+        '400':
+          description: Invalid deposit request
+
+  /withdraw:
+    post:
+      tags:
+        - employee
+      summary: Withdraw TRY for a customer
+      description: Withdraw a specified amount of TRY from the customer's account to the given IBAN.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DepositWithdraw'
+      responses:
+        '200':
+          description: Withdrawal successful
+        '400':
+          description: Invalid withdrawal request or insufficient balance
+
+
+  /orders:
+    get:
+      tags:
+        - employee
+      summary: List stock orders with optional filters
+      description: Retrieve a list of stock orders, filtered by date, customerId, assetName, or orderSide. If no filters are provided, all orders will be returned.
+      security:
+        - basicAuth: []
+      parameters:
+        - $ref: '#/components/parameters/customerId'
+        - $ref: '#/components/parameters/assetName'
+        - $ref: '#/components/parameters/orderSide'
+        - $ref: '#/components/parameters/startDate'
+        - $ref: '#/components/parameters/endDate'
+      responses:
+        '200':
+          description: A list of orders matching the filter criteria
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/StockOrder'
+        '400':
+          description: Invalid filter request
+
+    post:
+      tags:
+        - employee
+      summary: Create a new stock order
+      description: Create a new order for a customer (BUY or SELL). Validates that the customer has enough TRY balance before order creation.
+      security:
+        - basicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customerId:
+                  type: string
+                  description: Unique customer identifier
+                assetName:
+                  type: string
+                  description: Name of the asset to buy/sell
+                orderSide:
+                  type: string
+                  enum: [BUY, SELL]
+                  description: The side of the order (BUY or SELL)
+                size:
+                  type: integer
+                  description: Number of assets to buy/sell
+                price:
+                  type: number
+                  format: double
+                  description: Price of the asset
+      responses:
+        '201':
+          description: Order created successfully
+        '400':
+          description: Invalid request or insufficient balance
+
+  /orders/{orderId}:
+    post:
+      tags:
+        - employee
+      summary: Cancel a pending order
+      description: Cancel a pending stock order. Only orders with a status of "pending" can be deleted.
+      security:
+        - basicAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Unique identifier of the order to be canceled
+      responses:
+        '200':
+          description: Order canceled successfully
+        '400':
+          description: Invalid request or order cannot be canceled (only pending orders can be deleted)
+        '404':
+          description: Order not found
+
+  /admin/match-orders:
+    post:
+      tags:
+        - admin
+      summary: Match pending orders
+      description: Admin matches pending orders and updates both TRY asset and bought asset sizes accordingly. Orders are not matched against each other.
+      security:
+        - basicAuth: []
+      responses:
+        '200':
+          description: Orders matched successfully and assets updated
+        '400':
+          description: Invalid order match request or orders not found
+
+  /assets:
+    get:
+      tags:
+        - employee
+      summary: List all assets for a given customer
+      description: Retrieve a list of all assets for a specific customer. You can filter by asset name if desired.
+      security:
+        - basicAuth: []
+      parameters:
+        - name: customerId
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Unique customer identifier to fetch assets
+        - name: assetName
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by asset name
+      responses:
+        '200':
+          description: A list of assets for the customer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    assetName:
+                      type: string
+                      description: The name of the asset
+                    quantity:
+                      type: integer
+                      description: Quantity of the asset
+                    price:
+                      type: number
+                      format: double
+                      description: Current price of the asset
+        '400':
+          description: Invalid request or customer not found
